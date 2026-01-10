@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDatabase } from '../database.js';
 import { AgentRole, AgentStatus } from '../models.js';
+import { syncToActiveContext } from '../utils/contextSync.js';
 
 // Current agent state (per server instance)
 let currentAgentId: string | null = null;
@@ -52,6 +53,7 @@ export function registerAgentTools(server: McpServer): void {
         // Reconnect to existing agent
         setCurrentAgent(existing.id, existing.name);
         db.updateAgentHeartbeat(existing.id, AgentStatus.ACTIVE);
+        syncToActiveContext();
         return {
           content: [
             {
@@ -70,6 +72,7 @@ export function registerAgentTools(server: McpServer): void {
       });
 
       setCurrentAgent(agent.id, agent.name);
+      syncToActiveContext();
 
       return {
         content: [
@@ -106,6 +109,7 @@ export function registerAgentTools(server: McpServer): void {
       const updated = getDatabase().updateAgentHeartbeat(currentAgentId, agentStatus);
 
       if (updated) {
+        syncToActiveContext();
         return {
           content: [{ type: 'text', text: `Heartbeat recorded${status ? ` (${status})` : ''}.` }],
         };
@@ -185,6 +189,7 @@ export function registerAgentTools(server: McpServer): void {
       if (deleted) {
         const name = currentAgentName;
         clearCurrentAgent();
+        syncToActiveContext();
         return {
           content: [{ type: 'text', text: `Agent '${name}' unregistered. All locks released.` }],
         };

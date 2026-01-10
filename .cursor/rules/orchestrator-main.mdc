@@ -18,6 +18,8 @@ bootstrap:
   role: "main"
 ```
 
+**Important**: `bootstrap` is an MCP tool invocation inside your agent/IDE, not a terminal command.
+
 ## Your Responsibilities
 
 1. **Set the Focus** - Always set the current focus so other agents know what we're working on:

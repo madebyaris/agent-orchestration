@@ -19,6 +19,8 @@ claim_todo:
   description: "<details if any>"
 ```
 
+**Important**: tool calls like `claim_todo` / `bootstrap` are MCP tool invocations inside your agent/IDE, not terminal commands.
+
 **DO NOT start coding until you have claimed your task.**
 
 This:

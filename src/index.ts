@@ -28,6 +28,7 @@ const server = new McpServer({
 registerAgentTools(server);
 registerMemoryTools(server);
 registerTaskTools(server);
+registerCoordinationTools(server);
 registerUtilityTools(server);
 
 

@@ -15,13 +15,14 @@ import {
   registerTaskTools,
   registerCoordinationTools,
   registerUtilityTools,
+  registerResearchTools,
   registerProxyTools,
 } from './tools/index.js';
 
 // Create server instance
 const server = new McpServer({
   name: 'agent-orchestration',
-  version: '0.5.1',
+  version: '0.5.2',
 });
 
 // Register all tools
@@ -30,6 +31,7 @@ registerMemoryTools(server);
 registerTaskTools(server);
 registerCoordinationTools(server);
 registerUtilityTools(server);
+registerResearchTools(server);
 
 
 

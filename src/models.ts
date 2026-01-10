@@ -34,6 +34,13 @@ export enum TaskPriority {
   URGENT = 'urgent',
 }
 
+export enum TaskComplexity {
+  TRIVIAL = 'trivial',
+  SIMPLE = 'simple',
+  MODERATE = 'moderate',
+  COMPLEX = 'complex',
+}
+
 export enum EventType {
   AGENT_REGISTERED = 'agent_registered',
   AGENT_UNREGISTERED = 'agent_unregistered',
@@ -68,6 +75,8 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  complexity: TaskComplexity;
+  researchReady: boolean;
   createdBy: string | null;
   assignedTo: string | null;
   dependencies: string[];
@@ -131,10 +140,56 @@ export function createAgent(params: {
   };
 }
 
+/**
+ * Keywords used to auto-detect task complexity
+ */
+export const COMPLEXITY_KEYWORDS: Record<TaskComplexity, string[]> = {
+  [TaskComplexity.TRIVIAL]: ['typo', 'comment', 'rename', 'config', 'formatting', 'whitespace'],
+  [TaskComplexity.SIMPLE]: ['fix', 'bug', 'update', 'change', 'refactor', 'tweak', 'adjust'],
+  [TaskComplexity.MODERATE]: ['add', 'create', 'implement', 'endpoint', 'component', 'test', 'api'],
+  [TaskComplexity.COMPLEX]: ['feature', 'migrate', 'architecture', 'redesign', 'integrate', 'new system', 'overhaul', 'rebuild'],
+};
+
+/**
+ * Research requirements for each complexity level
+ */
+export const RESEARCH_REQUIREMENTS: Record<TaskComplexity, string[]> = {
+  [TaskComplexity.TRIVIAL]: [], // No research needed
+  [TaskComplexity.SIMPLE]: ['context', 'files'],
+  [TaskComplexity.MODERATE]: ['context', 'files', 'requirements'],
+  [TaskComplexity.COMPLEX]: ['context', 'files', 'requirements', 'design'],
+};
+
+/**
+ * Detect task complexity from title/description keywords
+ */
+export function detectComplexity(title: string, description?: string): TaskComplexity {
+  const text = `${title} ${description ?? ''}`.toLowerCase();
+  
+  // Check from most complex to least complex
+  for (const keyword of COMPLEXITY_KEYWORDS[TaskComplexity.COMPLEX]) {
+    if (text.includes(keyword)) return TaskComplexity.COMPLEX;
+  }
+  for (const keyword of COMPLEXITY_KEYWORDS[TaskComplexity.MODERATE]) {
+    if (text.includes(keyword)) return TaskComplexity.MODERATE;
+  }
+  for (const keyword of COMPLEXITY_KEYWORDS[TaskComplexity.SIMPLE]) {
+    if (text.includes(keyword)) return TaskComplexity.SIMPLE;
+  }
+  for (const keyword of COMPLEXITY_KEYWORDS[TaskComplexity.TRIVIAL]) {
+    if (text.includes(keyword)) return TaskComplexity.TRIVIAL;
+  }
+  
+  // Default to simple if no keywords match
+  return TaskComplexity.SIMPLE;
+}
+
 export function createTask(params: {
   title: string;
   description?: string;
   priority?: TaskPriority;
+  complexity?: TaskComplexity;
+  researchReady?: boolean;
   createdBy?: string | null;
   assignedTo?: string | null;
   dependencies?: string[];
@@ -143,12 +198,18 @@ export function createTask(params: {
   startedAt?: Date | null;
 }): Task {
   const now = new Date();
+  const complexity = params.complexity ?? detectComplexity(params.title, params.description);
+  // Trivial tasks are automatically research-ready
+  const researchReady = params.researchReady ?? (complexity === TaskComplexity.TRIVIAL);
+  
   return {
     id: ulid(),
     title: params.title,
     description: params.description ?? '',
     status: params.status ?? TaskStatus.PENDING,
     priority: params.priority ?? TaskPriority.NORMAL,
+    complexity,
+    researchReady,
     createdBy: params.createdBy ?? null,
     assignedTo: params.assignedTo ?? null,
     dependencies: params.dependencies ?? [],

@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDatabase } from '../database.js';
-import { AgentRole, AgentStatus, TaskPriority, TaskStatus } from '../models.js';
+import { AgentRole, AgentStatus, TaskComplexity, TaskPriority, TaskStatus, RESEARCH_REQUIREMENTS } from '../models.js';
 import {
   getCurrentAgentId,
   setCurrentAgent,
@@ -123,7 +123,7 @@ export function registerUtilityTools(server: McpServer): void {
   // claim_todo
   server.tool(
     'claim_todo',
-    'FOR SUB-AGENTS: Register yourself AND claim a specific task in one call. Use this when you were spawned to work on a specific todo. This creates the task if it doesn\'t exist, then claims it for you.',
+    'FOR SUB-AGENTS: Register yourself AND claim a specific task in one call. Use this when you were spawned to work on a specific todo. This creates the task if it doesn\'t exist. Shows research checklist based on complexity.',
     {
       title: z.string().describe('The title of the todo/task you were spawned to work on'),
       description: z.string().optional().default('').describe('Additional details about the task'),
@@ -132,8 +132,12 @@ export function registerUtilityTools(server: McpServer): void {
         .optional()
         .default('normal')
         .describe('Priority level'),
+      complexity: z
+        .enum(['trivial', 'simple', 'moderate', 'complex'])
+        .optional()
+        .describe('Task complexity (auto-detected if not provided). Determines research requirements.'),
     },
-    async ({ title, description, priority }) => {
+    async ({ title, description, priority, complexity }) => {
       const db = getDatabase();
 
       // Generate agent name
@@ -144,7 +148,7 @@ export function registerUtilityTools(server: McpServer): void {
         name: agentName,
         role: AgentRole.SUB,
         capabilities: ['code'],
-        status: AgentStatus.BUSY, // Already working
+        status: AgentStatus.ACTIVE, // Active, not busy yet (need to do research first)
       });
       setCurrentAgent(agent.id, agent.name);
 
@@ -156,27 +160,33 @@ export function registerUtilityTools(server: McpServer): void {
           ['pending', 'assigned'].includes(t.status)
       );
 
+      let isNewTask = false;
       if (task) {
-        // Claim the existing task
+        // Assign the existing task to this agent (but don't start yet if research needed)
         task = db.updateTask(task.id, {
           assignedTo: agent.id,
-          status: TaskStatus.IN_PROGRESS,
+          status: TaskStatus.ASSIGNED,
         })!;
       } else {
-        // Create a new task and claim it
+        // Create a new task (assigned, not in_progress)
+        isNewTask = true;
         task = db.createTask({
           title,
           description,
           priority: priority as TaskPriority,
-          status: TaskStatus.IN_PROGRESS,
+          complexity: complexity as TaskComplexity | undefined,
+          status: TaskStatus.ASSIGNED,
           assignedTo: agent.id,
           createdBy: agent.id,
-          startedAt: new Date(),
         });
       }
 
       // Sync context
       syncToActiveContext();
+
+      // Get research requirements
+      const requirements = RESEARCH_REQUIREMENTS[task.complexity];
+      const researchStatus = db.getResearchStatus(task.id);
 
       const lines: string[] = [
         '# Task Claimed',
@@ -184,15 +194,77 @@ export function registerUtilityTools(server: McpServer): void {
         `**You are**: ${agent.name} (\`${agent.id}\`)`,
         `**Working on**: ${task.title}`,
         `**Task ID**: \`${task.id}\``,
+        `**Complexity**: ${task.complexity}`,
         '',
-        '---',
-        '',
-        'Now you can start working. Remember to:',
-        '1. `lock_acquire` on any files you edit',
-        '2. `task_update` to report progress',
-        '3. `task_complete` when done',
-        '4. `agent_unregister` when finished',
       ];
+
+      // Show research checklist based on complexity
+      if (requirements.length === 0) {
+        // Trivial task - no research needed
+        lines.push('## ✅ No Research Required');
+        lines.push('');
+        lines.push('This is a trivial task. You can start working immediately.');
+        lines.push('');
+        lines.push('**Next steps:**');
+        lines.push('1. `task_claim` to start working');
+        lines.push('2. `lock_acquire` on any files you edit');
+        lines.push('3. Implement the solution');
+        lines.push('4. `task_complete` when done');
+        lines.push('5. `agent_unregister` when finished');
+      } else if (researchStatus.isReady) {
+        // Research already done
+        lines.push('## ✅ Research Complete');
+        lines.push('');
+        lines.push('Research has already been documented. You can start working.');
+        lines.push('');
+        lines.push('**Next steps:**');
+        lines.push('1. `task_claim` to start working');
+        lines.push('2. `lock_acquire` on any files you edit');
+        lines.push('3. Implement the solution');
+        lines.push('4. `task_complete` when done');
+      } else {
+        // Research needed
+        lines.push('## 🔬 Research Required');
+        lines.push('');
+        lines.push('Before implementing, document your research:');
+        lines.push('');
+
+        const descriptions: Record<string, string> = {
+          context: 'Understand the current state, existing patterns, and project context',
+          files: 'Identify all files that will be affected by this change',
+          requirements: 'Document specs, acceptance criteria, and edge cases',
+          design: 'Make architecture decisions and document component structure',
+        };
+
+        for (const req of requirements) {
+          const done = researchStatus.completed.includes(req);
+          const emoji = done ? '✅' : '⬜';
+          lines.push(`${emoji} **${req}**: ${descriptions[req] || req}`);
+        }
+
+        lines.push('');
+        lines.push('### How to Document Research');
+        lines.push('');
+        lines.push('Use `memory_set` for each item:');
+        lines.push('```');
+        lines.push('memory_set:');
+        lines.push('  key: "<finding_name>"');
+        lines.push('  value: "<your findings>"');
+        lines.push(`  namespace: "research:${task.id}:<category>"`);
+        lines.push('```');
+        lines.push('');
+        lines.push('### When Done');
+        lines.push('');
+        lines.push('1. Mark research complete:');
+        lines.push('```');
+        lines.push(`research_ready task_id="${task.id}"`);
+        lines.push('```');
+        lines.push('');
+        lines.push('2. Then claim to start implementation:');
+        lines.push('```');
+        lines.push(`task_claim task_id="${task.id}"`);
+        lines.push('```');
+      }
 
       return {
         content: [{ type: 'text', text: lines.join('\n') }],

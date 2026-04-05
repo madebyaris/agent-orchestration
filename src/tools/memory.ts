@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDatabase } from '../database.js';
 import { getCurrentAgentId } from './agent.js';
+import { syncToActiveContext } from '../utils/contextSync.js';
 
 export function registerMemoryTools(server: McpServer): void {
   // memory_set
@@ -14,7 +15,7 @@ export function registerMemoryTools(server: McpServer): void {
     'Store a value in shared memory. Use namespaces to organize: context, decisions, findings, blockers.',
     {
       key: z.string().describe('The key to store the value under'),
-      value: z.string().describe('The value to store (will be stored as-is)'),
+      value: z.any().describe('The value to store (any JSON-serializable value)'),
       namespace: z
         .string()
         .optional()
@@ -35,6 +36,9 @@ export function registerMemoryTools(server: McpServer): void {
         createdBy: agentId,
         ttlSeconds: ttl_seconds ?? null,
       });
+
+      // Keep activeContext.md up-to-date (if enabled)
+      syncToActiveContext();
 
       const ttlInfo = entry.ttlSeconds ? ` (expires in ${entry.ttlSeconds}s)` : '';
 
@@ -137,6 +141,8 @@ export function registerMemoryTools(server: McpServer): void {
       const deleted = getDatabase().deleteMemory(key, namespace);
 
       if (deleted) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
         return {
           content: [{ type: 'text', text: `Deleted '${key}' from namespace '${namespace}'.` }],
         };

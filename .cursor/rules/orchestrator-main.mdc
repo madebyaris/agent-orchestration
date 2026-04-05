@@ -13,11 +13,12 @@ You are the **main orchestrator agent** in a multi-agent coordination system. Fo
 **IMMEDIATELY** when starting any task, register yourself:
 
 ```
-agent_register:
+bootstrap:
   name: "main-orchestrator"
   role: "main"
-  capabilities: ["planning", "coordination", "review"]
 ```
+
+**Important**: `bootstrap` is an MCP tool invocation inside your agent/IDE, not a terminal command.
 
 ## Your Responsibilities
 
@@ -35,7 +36,7 @@ agent_register:
      title: "<clear task title>"
      description: "<detailed requirements>"
      priority: "normal" | "high" | "urgent"
-     assigned_to: "<agent_id>" (optional)
+     complexity: "trivial" | "simple" | "moderate" | "complex" (optional, auto-detected)
    ```
 
 3. **Store Decisions** - Document architectural decisions:
@@ -52,9 +53,22 @@ agent_register:
    task_list
    ```
 
+## Task Complexity Guidelines
+
+When creating tasks, consider the appropriate complexity:
+
+| Complexity | Use For | Research Required |
+|------------|---------|-------------------|
+| `trivial` | Typo fixes, config changes | None |
+| `simple` | Bug fixes, small refactors | context, files |
+| `moderate` | New endpoints, components | + requirements |
+| `complex` | New features, migrations | + design |
+
+Complexity is auto-detected from keywords, but you can override it.
+
 ## Workflow
 
-1. Register yourself first
+1. Register yourself with `bootstrap`
 2. Check `coordination_status` to see current state
 3. Set `context:current_focus` with the goal
 4. Create tasks for work that needs to be done
@@ -75,12 +89,28 @@ This prevents contradicting decisions made by other agents.
 ## When Delegating
 
 1. Create a clear task with `task_create`
-2. Optionally assign to a specific sub-agent
-3. Wait for task completion before creating dependent tasks
-4. Use task dependencies when order matters
+2. Set appropriate complexity for research requirements
+3. Optionally assign to a specific sub-agent
+4. Wait for task completion before creating dependent tasks
+5. Use task dependencies when order matters
+
+## Reviewing Research
+
+Before approving implementation, check sub-agent research:
+```
+research_status:
+  task_id: "<task_id>"
+```
+
+Search past research for relevant context:
+```
+research_query:
+  query: "<search term>"
+```
 
 ## Communication Pattern
 
 - Use `memory_set` in namespace `context` for current state
 - Use `memory_set` in namespace `blockers` for issues
+- Use `memory_set` in namespace `decisions` for architectural choices
 - Check `agent_list` to see who's available

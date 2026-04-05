@@ -24,6 +24,7 @@ This MCP server provides:
 - **Task Queue** - Turn-based task execution with dependencies
 - **Agent Discovery** - Agents can see who else is working on the project
 - **Resource Locking** - Prevent concurrent access to files or resources
+- **Research-First Workflow** - Ensures agents understand context before coding
 - **Coordination Status** - Real-time visibility into the orchestration state
 - **Auto Context Sync** - Automatically updates `activeContext.md` for easy reference
 
@@ -106,6 +107,8 @@ Use the `bootstrap` tool to start:
 bootstrap
 ```
 
+**Note**: `bootstrap` is an MCP tool invocation inside your agent/IDE, not a terminal command.
+
 This registers you, shows current focus, pending tasks, and recent decisions.
 
 ## Available Tools
@@ -140,12 +143,21 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 
 | Tool | Description |
 |------|-------------|
-| `task_create` | Create a new task in the queue |
-| `task_claim` | Claim a task to work on |
+| `task_create` | Create a new task (auto-detects complexity) |
+| `task_claim` | Claim a task to work on (requires research for non-trivial) |
 | `task_update` | Update task status or progress |
 | `task_complete` | Mark a task as completed |
 | `task_list` | List tasks with filters |
 | `is_my_turn` | Check if work is available for you |
+
+### Research Workflow
+
+| Tool | Description |
+|------|-------------|
+| `research_ready` | Mark research complete for a task |
+| `research_status` | Check research progress for a task |
+| `research_query` | Search past research findings |
+| `research_checklist` | View research requirements by complexity |
 
 ### Coordination
 
@@ -156,6 +168,33 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 | `lock_check` | Check if a resource is locked |
 | `coordination_status` | Get overall system status |
 
+## Research-First Workflow
+
+Tasks are automatically assigned a complexity level that determines research requirements:
+
+| Complexity | Examples | Research Required |
+|------------|----------|-------------------|
+| `trivial` | Typo fix, config change | None |
+| `simple` | Bug fix, small refactor | context, files |
+| `moderate` | New endpoint, component | + requirements |
+| `complex` | New feature, migration | + design |
+
+### How It Works
+
+1. **Task Creation** - Complexity is auto-detected from keywords (or manually set)
+2. **Research Phase** - Agent documents findings in structured namespaces
+3. **Research Gate** - `task_claim` is blocked until research is complete
+4. **Implementation** - Agent proceeds with full context
+
+### Research Namespaces
+
+```
+research:<task_id>:context      # Understanding of codebase
+research:<task_id>:files        # Affected files identified
+research:<task_id>:requirements # Specs and edge cases
+research:<task_id>:design       # Architecture decisions
+```
+
 ## Recommended Workflow
 
 ### Main Orchestrator Agent
@@ -163,7 +202,7 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 ```
 1. bootstrap                          # Start session
 2. memory_set current_focus "..."     # Set project focus
-3. task_create "Feature X"            # Create tasks
+3. task_create "Feature X"            # Create tasks (complexity auto-detected)
 4. task_create "Feature Y"
 5. coordination_status                # Monitor progress
 ```
@@ -171,11 +210,28 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 ### Sub-Agents (Spawned for Specific Work)
 
 ```
-1. claim_todo "Feature X"             # Register + claim in one call
-2. lock_acquire "src/feature.ts"      # Lock files before editing
+1. claim_todo "Feature X"             # Register + see research checklist
+
+# Research Phase (for non-trivial tasks)
+2. memory_set key="understanding" namespace="research:<task_id>:context" value="..."
+3. memory_set key="files" namespace="research:<task_id>:files" value="..."
+4. research_ready task_id="<task_id>" # Validate research complete
+
+# Implementation Phase
+5. task_claim task_id="<task_id>"     # Now allowed to start
+6. lock_acquire "src/feature.ts"      # Lock files before editing
+7. [do the work]
+8. task_complete <task_id> "Done"     # Complete the task
+9. agent_unregister                   # Clean up
+```
+
+### Trivial Tasks (No Research)
+
+```
+1. claim_todo "Fix typo in README"    # Complexity: trivial
+2. task_claim task_id="<task_id>"     # Immediately allowed
 3. [do the work]
-4. task_complete <task_id> "Done"     # Complete the task
-5. agent_unregister                   # Clean up
+4. task_complete <task_id> "Done"
 ```
 
 ## Memory Namespaces
@@ -301,9 +357,9 @@ npm run clean && npm run build
 
 We're actively developing new features. Here's what's coming:
 
+- [x] **Research-First Workflow** - Agents research and prepare before coding (DONE in v0.5.2)
 - [ ] **External Memory Integration** - Integration with external memory providers like [Mem0](https://mem0.ai/), [Byteover](https://www.byterover.dev/), and our own memory solution
 - [ ] **Enhanced Sub-Agent Knowledge** - Fix limitations in knowledge sharing between main agent and sub-agents
-- [ ] **Research-First Workflow** - When building from scratch, agents should research first and prepare all requirements before coding
 - [ ] **Graceful Error Handling** - Better error handling and recovery across all operations
 - [ ] **Auto Documentation** - Automatically generate documentation from and for each sub-agent + main agent interactions
 

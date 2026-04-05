@@ -20,8 +20,10 @@ import {
   Lock,
   MemoryEntry,
   Task,
+  TaskComplexity,
   TaskPriority,
   TaskStatus,
+  RESEARCH_REQUIREMENTS,
 } from './models.js';
 
 // Default database path relative to project root
@@ -68,6 +70,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     description TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     priority TEXT NOT NULL DEFAULT 'normal',
+    complexity TEXT NOT NULL DEFAULT 'simple',
+    research_ready INTEGER NOT NULL DEFAULT 0,
     created_by TEXT,
     assigned_to TEXT,
     dependencies TEXT NOT NULL DEFAULT '[]',
@@ -298,6 +302,8 @@ export class OrchestratorDatabase {
     title: string;
     description?: string;
     priority?: TaskPriority;
+    complexity?: TaskComplexity;
+    researchReady?: boolean;
     createdBy?: string | null;
     assignedTo?: string | null;
     dependencies?: string[];
@@ -309,9 +315,9 @@ export class OrchestratorDatabase {
 
     this.db
       .prepare(
-        `INSERT INTO tasks (id, title, description, status, priority, created_by, assigned_to,
+        `INSERT INTO tasks (id, title, description, status, priority, complexity, research_ready, created_by, assigned_to,
                           dependencies, metadata, output, created_at, updated_at, started_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         task.id,
@@ -319,6 +325,8 @@ export class OrchestratorDatabase {
         task.description,
         task.status,
         task.priority,
+        task.complexity,
+        task.researchReady ? 1 : 0,
         task.createdBy,
         task.assignedTo,
         JSON.stringify(task.dependencies),
@@ -330,7 +338,7 @@ export class OrchestratorDatabase {
         task.completedAt?.toISOString() ?? null
       );
 
-    this.logEvent(EventType.TASK_CREATED, task.createdBy, task.id, { title: task.title });
+    this.logEvent(EventType.TASK_CREATED, task.createdBy, task.id, { title: task.title, complexity: task.complexity });
     return task;
   }
 
@@ -376,6 +384,8 @@ export class OrchestratorDatabase {
       assignedTo?: string | null;
       output?: string;
       metadata?: Record<string, unknown>;
+      researchReady?: boolean;
+      complexity?: TaskComplexity;
     }
   ): Task | null {
     const task = this.getTask(taskId);
@@ -416,6 +426,16 @@ export class OrchestratorDatabase {
       const merged = { ...task.metadata, ...updates.metadata };
       setClauses.push('metadata = ?');
       params.push(JSON.stringify(merged));
+    }
+
+    if (updates.researchReady !== undefined) {
+      setClauses.push('research_ready = ?');
+      params.push(updates.researchReady ? 1 : 0);
+    }
+
+    if (updates.complexity !== undefined) {
+      setClauses.push('complexity = ?');
+      params.push(updates.complexity);
     }
 
     params.push(taskId);
@@ -480,6 +500,8 @@ export class OrchestratorDatabase {
       description: row.description as string,
       status: row.status as TaskStatus,
       priority: row.priority as TaskPriority,
+      complexity: (row.complexity as TaskComplexity) ?? TaskComplexity.SIMPLE,
+      researchReady: Boolean(row.research_ready),
       createdBy: row.created_by as string | null,
       assignedTo: row.assigned_to as string | null,
       dependencies: JSON.parse(row.dependencies as string) as string[],
@@ -490,6 +512,118 @@ export class OrchestratorDatabase {
       startedAt: row.started_at ? new Date(row.started_at as string) : null,
       completedAt: row.completed_at ? new Date(row.completed_at as string) : null,
     };
+  }
+
+  // ==================== Research Operations ====================
+
+  /**
+   * Get research status for a task
+   * Returns which research items are completed and which are missing
+   */
+  getResearchStatus(taskId: string): {
+    task: Task | null;
+    required: string[];
+    completed: string[];
+    missing: string[];
+    isReady: boolean;
+  } {
+    const task = this.getTask(taskId);
+    if (!task) {
+      return { task: null, required: [], completed: [], missing: [], isReady: false };
+    }
+
+    const required = RESEARCH_REQUIREMENTS[task.complexity] || [];
+    
+    // If no research required (trivial), it's ready
+    if (required.length === 0) {
+      return { task, required: [], completed: [], missing: [], isReady: true };
+    }
+
+    // Check what research has been documented
+    const completed: string[] = [];
+    const missing: string[] = [];
+
+    for (const item of required) {
+      const namespace = `research:${taskId}:${item}`;
+      const entries = this.listMemory(namespace);
+      if (entries.length > 0) {
+        completed.push(item);
+      } else {
+        missing.push(item);
+      }
+    }
+
+    return {
+      task,
+      required,
+      completed,
+      missing,
+      isReady: missing.length === 0,
+    };
+  }
+
+  /**
+   * Mark a task as research-ready (validates that all required research is done)
+   */
+  markResearchReady(taskId: string): { success: boolean; message: string; task?: Task } {
+    const status = this.getResearchStatus(taskId);
+    
+    if (!status.task) {
+      return { success: false, message: `Task ${taskId} not found.` };
+    }
+
+    if (status.task.researchReady) {
+      return { success: true, message: 'Research already marked as ready.', task: status.task };
+    }
+
+    if (!status.isReady) {
+      return {
+        success: false,
+        message: `Research incomplete. Missing: ${status.missing.join(', ')}. Use memory_set with namespace "research:${taskId}:<item>" to document each.`,
+      };
+    }
+
+    const updated = this.updateTask(taskId, { researchReady: true });
+    return {
+      success: true,
+      message: 'Research marked as complete. You may now implement.',
+      task: updated ?? undefined,
+    };
+  }
+
+  /**
+   * Search research findings across all tasks
+   */
+  searchResearch(query: string, limit: number = 20): MemoryEntry[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM memory 
+         WHERE namespace LIKE 'research:%' 
+         AND (key LIKE ? OR value LIKE ?)
+         ORDER BY updated_at DESC
+         LIMIT ?`
+      )
+      .all(`%${query}%`, `%${query}%`, limit) as DbRow[];
+
+    return rows.map((row) => this.rowToMemory(row));
+  }
+
+  /**
+   * Get all research for a specific task
+   */
+  getTaskResearch(taskId: string): Record<string, MemoryEntry[]> {
+    const result: Record<string, MemoryEntry[]> = {};
+    const categories = ['context', 'files', 'requirements', 'design'];
+
+    for (const category of categories) {
+      const namespace = `research:${taskId}:${category}`;
+      const entries = this.listMemory(namespace);
+      if (entries.length > 0) {
+        result[category] = entries;
+      }
+    }
+
+    return result;
   }
 
   // ==================== Memory Operations ====================

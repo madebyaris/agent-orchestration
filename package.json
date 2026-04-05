@@ -1,18 +1,27 @@
 {
   "name": "agent-orchestration",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Agent Orchestration - MCP server for multi-agent coordination across IDEs and CLI tools",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "agent-orchestration": "dist/bin/cli.js"
   },
+  "files": [
+    "dist",
+    "templates",
+    ".cursor/rules",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "node ./node_modules/typescript/bin/tsc",
+    "dev": "node ./node_modules/typescript/bin/tsc --watch",
     "start": "node dist/index.js",
-    "lint": "eslint src --ext .ts",
+    "lint": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist",
+    "prepack": "npm run build",
     "release": "release-it"
   },
   "keywords": [

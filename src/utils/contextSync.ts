@@ -33,6 +33,9 @@ export function syncToActiveContext(): void {
   try {
     const db = getDatabase();
 
+    // Cleanup stale agents so the file reflects reality
+    db.cleanupStaleAgents();
+
     // Get current state
     const agents = db.listAgents();
     const activeAgents = agents.filter((a) => ['active', 'busy'].includes(a.status));

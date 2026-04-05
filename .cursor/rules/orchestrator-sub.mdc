@@ -19,56 +19,117 @@ claim_todo:
   description: "<details if any>"
 ```
 
+**Important**: tool calls like `claim_todo` / `bootstrap` are MCP tool invocations inside your agent/IDE, not terminal commands.
+
 **DO NOT start coding until you have claimed your task.**
 
 This:
 1. Registers you with the orchestrator
 2. Creates the task if it doesn't exist
-3. Claims it so no other agent works on it
-4. Returns your agent ID and task ID
+3. Assigns it to you
+4. Shows you the **research checklist** based on task complexity
 
 ---
 
-## After Claiming
+## 🔬 Research-First Workflow
 
-1. **Check context** to understand the project:
+After claiming, you'll see a research checklist based on task complexity:
+
+| Complexity | Research Required |
+|------------|-------------------|
+| `trivial` | None - start immediately |
+| `simple` | context, files |
+| `moderate` | context, files, requirements |
+| `complex` | context, files, requirements, design |
+
+### For Non-Trivial Tasks
+
+**BEFORE coding**, document your research:
+
+1. **Context** - Understand the current state:
    ```
-   memory_get:
-     key: "current_focus"
-     namespace: "context"
+   memory_set:
+     key: "understanding"
+     value: "<what you learned about the codebase>"
+     namespace: "research:<task_id>:context"
    ```
 
-2. **Check decisions** to avoid contradicting them:
+2. **Files** - Identify affected files:
    ```
-   memory_list:
-     namespace: "decisions"
+   memory_set:
+     key: "affected_files"
+     value: "<list of files you'll modify>"
+     namespace: "research:<task_id>:files"
    ```
 
-3. **Lock files** before editing:
+3. **Requirements** (moderate/complex):
+   ```
+   memory_set:
+     key: "specs"
+     value: "<requirements, acceptance criteria, edge cases>"
+     namespace: "research:<task_id>:requirements"
+   ```
+
+4. **Design** (complex only):
+   ```
+   memory_set:
+     key: "architecture"
+     value: "<design decisions, component structure>"
+     namespace: "research:<task_id>:design"
+   ```
+
+### Mark Research Complete
+
+When all items are documented:
+
+```
+research_ready:
+  task_id: "<your_task_id>"
+```
+
+### Then Start Implementation
+
+```
+task_claim:
+  task_id: "<your_task_id>"
+```
+
+---
+
+## Check Research Status
+
+To see what's done and what's missing:
+
+```
+research_status:
+  task_id: "<your_task_id>"
+```
+
+---
+
+## While Working
+
+1. **Lock files** before editing:
    ```
    lock_acquire:
      resource: "<file_path>"
      reason: "<what you're doing>"
    ```
 
----
+2. **Update progress** periodically:
+   ```
+   task_update:
+     task_id: "<your_task_id>"
+     progress: 50
+   ```
 
-## While Working
-
-Update progress periodically:
-```
-task_update:
-  task_id: "<your_task_id>"
-  progress: 50
-```
-
-Store important findings:
-```
-memory_set:
-  key: "<finding>"
-  value: "<details>"
-  namespace: "findings"
-```
+3. **Store findings** for others:
+   ```
+   memory_set:
+     key: "<finding>"
+     value: "<details>"
+     namespace: "findings"
+   ```
 
 ---
 
@@ -109,6 +170,7 @@ memory_set:
 ## Important Rules
 
 1. **ALWAYS claim your task first** with `claim_todo`
-2. **ALWAYS lock files** before editing shared resources
-3. **ALWAYS complete your task** when done
-4. **Check shared memory** before making decisions that affect others
+2. **ALWAYS complete research** before implementation (non-trivial tasks)
+3. **ALWAYS lock files** before editing shared resources
+4. **ALWAYS complete your task** when done
+5. **Check shared memory** before making decisions that affect others

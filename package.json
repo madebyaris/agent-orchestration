@@ -1,6 +1,6 @@
 {
   "name": "agent-orchestration",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Agent Orchestration - MCP server for multi-agent coordination across IDEs and CLI tools",
   "type": "module",
   "main": "dist/index.js",

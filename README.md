@@ -521,7 +521,7 @@ npm run clean && npm run build
 
 We're actively developing new features. Here's what's coming:
 
-- [x] **Research-First Workflow** - Agents research and prepare before coding (DONE in v0.5.2)
+- [x] **Research-First Workflow** - Agents research and prepare before coding (DONE in v0.5.2, carried forward in v0.6.0)
 - [ ] **External Memory Integration** - Integration with external memory providers like [Mem0](https://mem0.ai/), [Byteover](https://www.byterover.dev/), and our own memory solution
 - [x] **Enhanced Sub-Agent Knowledge** - Delegated Cursor tasks now persist structured briefs, updates, findings, decisions, and handoff state in shared memory
 - [x] **Graceful Error Handling** - Delegated Cursor tasks now track health, stale/failed recovery state, retry counts, and structured recovery hints

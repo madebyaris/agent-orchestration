@@ -21,6 +21,8 @@ import {
   readExitCode,
   shouldUseCursorWorktreeForTask,
 } from '../utils/cursorCli.js';
+import { buildDelegationResumePrompt } from '../utils/delegationKnowledge.js';
+import { evaluateDelegationHealth } from '../utils/delegationRecovery.js';
 
 export class CursorProvider implements AgentProvider {
   private readonly cwd: string;
@@ -110,6 +112,9 @@ export class CursorProvider implements AgentProvider {
       providerExitCodePath: exitCodePath,
       providerLastSyncAt: new Date().toISOString(),
       providerWarnings: warnings,
+      providerRecoveryState: 'healthy',
+      providerRecoverable: false,
+      providerRetryCount: input.task.metadata.providerRetryCount as number | undefined,
     };
 
     return {
@@ -121,12 +126,19 @@ export class CursorProvider implements AgentProvider {
 
   async resumeSession(input: ResumeSessionInput): Promise<ResumeSessionResult> {
     const config = loadOrchestratorConfig(input.cwd).cursor;
-    const { command, args } = buildResumeCommand(config.binary, input.cwd, input.metadata);
+    const prompt = buildDelegationResumePrompt({
+      task: input.task,
+      currentFocus: input.currentFocus,
+      decisions: input.decisions,
+      research: input.research,
+      knowledge: input.delegationKnowledge,
+    });
+    const { command, args } = buildResumeCommand(config.binary, input.cwd, input.metadata, prompt);
     const warnings = input.metadata.providerChatId || input.metadata.providerSessionId
       ? []
       : ['No stored chat ID was found; the resume command will open Cursor’s latest session instead.'];
 
-    return { command, args, warnings };
+    return { command, args, warnings, prompt };
   }
 
   async syncTask(metadata: CursorDelegationMetadata): Promise<SyncTaskResult> {
@@ -137,28 +149,51 @@ export class CursorProvider implements AgentProvider {
     const exitCode = metadata.providerExitCodePath ? readExitCode(metadata.providerExitCodePath) : undefined;
     const running = isProcessRunning(metadata.providerPid);
     const outputSummary = metadata.providerLogPath ? readCursorLogSummary(metadata.providerLogPath) : undefined;
+    const config = loadOrchestratorConfig(this.cwd).cursor;
+    const health = evaluateDelegationHealth({
+      metadata,
+      isRunning: running,
+      exitCode,
+      staleAfterMs: config.recoveryStaleAfterMs,
+    });
 
-    if (running && exitCode === undefined) {
+    if (health.state === 'healthy') {
       return {
         metadata: {
           ...metadata,
           providerStatus: 'running',
           providerLastSyncAt: new Date().toISOString(),
+          providerRecoveryState: health.state,
+          providerRecoverable: health.recoverable,
+          providerRecoveryHints: health.hints,
         },
         outputSummary,
         finished: false,
+        recoveryState: health.state,
+        recoverable: health.recoverable,
+        recoveryHints: health.hints,
+        reason: health.reason,
       };
     }
 
-    if (exitCode === undefined) {
+    if (health.state === 'unknown' || health.state === 'stale') {
       return {
         metadata: {
           ...metadata,
-          providerStatus: metadata.providerStatus ?? 'spawned',
+          providerStatus: health.state === 'stale' ? 'failed' : metadata.providerStatus ?? 'spawned',
           providerLastSyncAt: new Date().toISOString(),
+          providerRecoveryState: health.state,
+          providerRecoverable: health.recoverable,
+          providerRecoveryHints: health.hints,
+          providerLastError: health.reason,
+          providerLastExitCode: health.exitCode,
         },
         outputSummary,
         finished: false,
+        recoveryState: health.state,
+        recoverable: health.recoverable,
+        recoveryHints: health.hints,
+        reason: health.reason,
       };
     }
 
@@ -167,9 +202,18 @@ export class CursorProvider implements AgentProvider {
         ...metadata,
         providerStatus: exitCode === 0 ? 'completed' : 'failed',
         providerLastSyncAt: new Date().toISOString(),
+        providerRecoveryState: health.state,
+        providerRecoverable: health.recoverable,
+        providerRecoveryHints: health.hints,
+        providerLastError: health.reason,
+        providerLastExitCode: health.exitCode,
       },
       outputSummary,
       finished: true,
+      recoveryState: health.state,
+      recoverable: health.recoverable,
+      recoveryHints: health.hints,
+      reason: health.reason,
     };
   }
 }

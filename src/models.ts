@@ -45,6 +45,7 @@ export type ProviderName = 'cursor';
 export type ProviderRuntime = 'cli' | 'acp';
 export type CursorProviderMode = 'agent' | 'plan' | 'ask' | 'cloud';
 export type ProviderExecutionStatus = 'spawned' | 'running' | 'completed' | 'failed';
+export type ProviderRecoveryState = 'healthy' | 'stale' | 'failed' | 'completed' | 'unknown';
 
 export enum EventType {
   AGENT_REGISTERED = 'agent_registered',
@@ -144,6 +145,13 @@ export interface CursorDelegationMetadata extends Record<string, unknown> {
   providerExitCodePath?: string;
   providerLastSyncAt?: string;
   providerWarnings?: string[];
+  providerRecoveryState?: ProviderRecoveryState;
+  providerRecoverable?: boolean;
+  providerLastError?: string;
+  providerRetryCount?: number;
+  providerRecoveryHints?: string[];
+  providerLastExitCode?: number;
+  providerRecoveredAt?: string;
 }
 
 // ==================== Factory Functions ====================

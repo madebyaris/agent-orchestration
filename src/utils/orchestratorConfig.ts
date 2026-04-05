@@ -18,6 +18,7 @@ export interface CursorProviderConfig {
   logDir: string;
   defaultModel?: string;
   preferWorktreeFor: TaskComplexity[];
+  recoveryStaleAfterMs: number;
 }
 
 export interface OrchestratorConfig {
@@ -39,6 +40,7 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
     useCreateChat: true,
     logDir: path.join('.agent-orchestration', 'providers', 'cursor'),
     preferWorktreeFor: DEFAULT_CURSOR_WORKTREE_COMPLEXITIES,
+    recoveryStaleAfterMs: 10 * 60 * 1000,
   },
 };
 

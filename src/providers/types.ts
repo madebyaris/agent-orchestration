@@ -1,4 +1,11 @@
-import { MemoryEntry, Task, CursorDelegationMetadata, CursorProviderMode, ProviderRuntime } from '../models.js';
+import {
+  MemoryEntry,
+  Task,
+  CursorDelegationMetadata,
+  CursorProviderMode,
+  ProviderRuntime,
+  ProviderRecoveryState,
+} from '../models.js';
 
 export interface ProviderCheckResult {
   provider: 'cursor';
@@ -32,6 +39,11 @@ export interface SpawnTaskResult {
 
 export interface ResumeSessionInput {
   cwd: string;
+  task: Task;
+  currentFocus: string | null;
+  decisions: MemoryEntry[];
+  research: Record<string, MemoryEntry[]>;
+  delegationKnowledge: Record<'brief' | 'updates' | 'findings' | 'decisions' | 'handoff', MemoryEntry[]>;
   metadata: CursorDelegationMetadata;
   printOnly?: boolean;
 }
@@ -40,12 +52,17 @@ export interface ResumeSessionResult {
   command: string;
   args: string[];
   warnings: string[];
+  prompt?: string;
 }
 
 export interface SyncTaskResult {
   metadata: CursorDelegationMetadata;
   outputSummary?: string;
   finished: boolean;
+  recoveryState: ProviderRecoveryState;
+  recoverable: boolean;
+  recoveryHints: string[];
+  reason?: string;
 }
 
 export interface AgentProvider {

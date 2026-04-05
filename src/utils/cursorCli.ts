@@ -189,7 +189,8 @@ export function buildCursorAgentArgs(input: {
 export function buildResumeCommand(
   binary: string,
   cwd: string,
-  metadata: CursorDelegationMetadata
+  metadata: CursorDelegationMetadata,
+  prompt?: string
 ): { args: string[]; command: string } {
   const args = ['--workspace', cwd];
   const sessionId = metadata.providerChatId ?? metadata.providerSessionId;
@@ -198,6 +199,10 @@ export function buildResumeCommand(
     args.push('--resume', sessionId);
   } else {
     args.push('resume');
+  }
+
+  if (prompt) {
+    args.push(prompt);
   }
 
   const command = formatCommand(binary, args);

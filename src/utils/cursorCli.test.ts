@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildCursorAgentArgs, buildCursorPrompt, shouldUseCursorWorktreeForTask } from './cursorCli.js';
 import { TaskComplexity, TaskPriority, TaskStatus } from '../models.js';
 import { CursorProviderConfig } from './orchestratorConfig.js';
+import { buildDelegationResumePrompt } from './delegationKnowledge.js';
 
 const config: CursorProviderConfig = {
   binary: 'agent',
@@ -14,6 +15,7 @@ const config: CursorProviderConfig = {
   useCreateChat: true,
   logDir: '.agent-orchestration/providers/cursor',
   preferWorktreeFor: [TaskComplexity.MODERATE, TaskComplexity.COMPLEX],
+  recoveryStaleAfterMs: 10 * 60 * 1000,
 };
 
 const baseTask = {
@@ -81,4 +83,64 @@ test('builds a prompt that includes orchestration workflow instructions', () => 
   assert.match(prompt, /Current focus:/);
   assert.match(prompt, /Recent decisions:/);
   assert.match(prompt, /Documented research:/);
+});
+
+test('builds a resume prompt from live knowledge and shared context', () => {
+  const prompt = buildDelegationResumePrompt({
+    task: { ...baseTask, status: TaskStatus.IN_PROGRESS },
+    currentFocus: 'Continue syncing delegated knowledge.',
+    decisions: [
+      {
+        id: 'mem1',
+        key: 'knowledge_loop',
+        value: 'Write delegation updates back to shared memory.',
+        namespace: 'decisions',
+        createdBy: null,
+        ttlSeconds: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      },
+    ],
+    research: {
+      context: [
+        {
+          id: 'mem2',
+          key: 'current_state',
+          value: 'Cursor tasks currently sync only raw output.',
+          namespace: 'research:task_123:context',
+          createdBy: null,
+          ttlSeconds: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        },
+      ],
+    },
+    knowledge: {
+      brief: [],
+      updates: [],
+      findings: [],
+      decisions: [],
+      handoff: [
+        {
+          id: 'mem3',
+          key: 'latest_handoff',
+          value: { summary: 'Resume from the last sync snapshot.' },
+          namespace: 'delegation:task_123:handoff',
+          createdBy: null,
+          ttlSeconds: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Live orchestration context:/);
+  assert.match(prompt, /Latest shared decisions:/);
+  assert.match(prompt, /Research still relevant to this task:/);
+  assert.match(prompt, /Latest handoff notes:/);
+  assert.match(prompt, /Continue from the latest shared state rather than redoing prior work\./);
 });

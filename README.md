@@ -76,9 +76,14 @@ This copies `.cursor/rules/` with Cursor-specific rules.
 npx agent-orchestration init           # Create AGENTS.md (works with any AI agent)
 npx agent-orchestration init-cursor    # Setup for Cursor IDE (.cursor/rules/)
 npx agent-orchestration serve          # Run the MCP server
+npx agent-orchestration doc --task <task-id>
 npx agent-orchestration cursor check   # Verify Cursor CLI support
 npx agent-orchestration cursor delegate --task <task-id>
+npx agent-orchestration cursor status --task <task-id>
 npx agent-orchestration cursor resume --task <task-id>
+npx agent-orchestration cursor sync --task <task-id>
+npx agent-orchestration cursor recover --task <task-id>
+npx agent-orchestration cursor handoff --task <task-id> --summary "..."
 npx agent-orchestration cursor list    # Show delegated Cursor tasks
 npx agent-orchestration help           # Show help
 ```
@@ -178,8 +183,13 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 |------|-------------|
 | `cursor_check` | Verify Cursor CLI availability and supported features |
 | `cursor_delegate_task` | Launch a Cursor CLI run for a task and persist session metadata |
+| `cursor_task_status` | Inspect delegated task health, recovery state, and retryability |
 | `cursor_resume_task` | Return the resume command for a delegated task |
+| `cursor_sync_task` | Refresh delegated task state and sync findings back into shared memory |
+| `cursor_recover_task` | Relaunch a failed or stale delegated task with current shared context |
+| `cursor_handoff_task` | Record a structured handoff for the next agent |
 | `cursor_list_delegations` | Show delegated Cursor tasks and their last known status |
+| `task_generate_doc` | Generate Markdown documentation for a task from current orchestration state |
 
 ## Cursor-Native Delegation
 
@@ -194,8 +204,23 @@ npx agent-orchestration cursor check
 # Delegate a task to Cursor
 npx agent-orchestration cursor delegate --task <task-id> --mode agent
 
+# Inspect health and recovery hints
+npx agent-orchestration cursor status --task <task-id>
+
 # Resume the delegated session later
 npx agent-orchestration cursor resume --task <task-id>
+
+# Sync the latest delegated knowledge back into shared memory
+npx agent-orchestration cursor sync --task <task-id>
+
+# Recover a stale or failed delegated run
+npx agent-orchestration cursor recover --task <task-id>
+
+# Record a structured handoff for another agent
+npx agent-orchestration cursor handoff --task <task-id> --summary "Current implementation is complete; QA and docs remain."
+
+# Generate task documentation on demand
+npx agent-orchestration doc --task <task-id>
 
 # Or launch the resume session immediately
 npx agent-orchestration cursor resume --task <task-id> --exec
@@ -219,6 +244,73 @@ Delegations store provider metadata directly on the task, including:
 - run log path
 
 Moderate and complex tasks default to Cursor worktrees for safer parallel execution.
+
+### Delegation Knowledge Loop
+
+Delegated Cursor tasks now write structured shared memory so the next agent can resume with live context instead of only the original launch prompt.
+
+Namespaces:
+
+- `delegation:<task_id>:brief`
+- `delegation:<task_id>:updates`
+- `delegation:<task_id>:findings`
+- `delegation:<task_id>:decisions`
+- `delegation:<task_id>:handoff`
+
+Recommended flow:
+
+1. `cursor_delegate_task` or `agent-orchestration cursor delegate`
+2. `cursor_task_status` to inspect health and recovery hints
+3. `cursor_sync_task` or `agent-orchestration cursor sync`
+4. `cursor_recover_task` when the delegated process is stale or failed
+5. `cursor_handoff_task` when a human or another agent needs to pick up the work
+6. `cursor_resume_task` to rebuild a resume prompt from the latest shared knowledge
+
+### Graceful Recovery
+
+Delegated Cursor runs now track recovery metadata directly on the task:
+
+- recovery state (`healthy`, `stale`, `failed`, `completed`, `unknown`)
+- recoverability
+- last error / exit code
+- retry count
+- recovery hints
+
+This enables:
+
+- stale process detection when no clean exit is captured
+- structured recovery hints in MCP and CLI
+- safe relaunch via `cursor_recover_task`
+- preservation of knowledge and handoff state across retries
+
+### Auto Documentation
+
+Task documentation is now generated automatically into `.agent-orchestration/docs/` from:
+
+- task metadata and output
+- research namespaces
+- delegation knowledge namespaces
+- provider health and recovery state
+- recent task-specific orchestration events
+
+Generated files:
+
+- `.agent-orchestration/docs/tasks/<task-id>.md`
+- `.agent-orchestration/docs/README.md`
+
+Documentation refreshes automatically during:
+
+- delegated task launch
+- delegated sync
+- delegated handoff
+- delegated recovery
+- task completion
+
+You can also regenerate docs manually with:
+
+```bash
+npx agent-orchestration doc --task <task-id>
+```
 
 ## Research-First Workflow
 
@@ -323,7 +415,8 @@ Optional project-level config for Cursor orchestration:
     "trustWorkspace": true,
     "useCreateChat": true,
     "logDir": ".agent-orchestration/providers/cursor",
-    "preferWorktreeFor": ["moderate", "complex"]
+    "preferWorktreeFor": ["moderate", "complex"],
+    "recoveryStaleAfterMs": 600000
   }
 }
 ```
@@ -430,9 +523,9 @@ We're actively developing new features. Here's what's coming:
 
 - [x] **Research-First Workflow** - Agents research and prepare before coding (DONE in v0.5.2)
 - [ ] **External Memory Integration** - Integration with external memory providers like [Mem0](https://mem0.ai/), [Byteover](https://www.byterover.dev/), and our own memory solution
-- [ ] **Enhanced Sub-Agent Knowledge** - Fix limitations in knowledge sharing between main agent and sub-agents
-- [ ] **Graceful Error Handling** - Better error handling and recovery across all operations
-- [ ] **Auto Documentation** - Automatically generate documentation from and for each sub-agent + main agent interactions
+- [x] **Enhanced Sub-Agent Knowledge** - Delegated Cursor tasks now persist structured briefs, updates, findings, decisions, and handoff state in shared memory
+- [x] **Graceful Error Handling** - Delegated Cursor tasks now track health, stale/failed recovery state, retry counts, and structured recovery hints
+- [x] **Auto Documentation** - Task docs are now generated automatically from orchestration state, delegation memory, provider recovery metadata, and task events
 
 Have a feature request? [Open an issue](https://github.com/madebyaris/agent-orchestration/issues)!
 

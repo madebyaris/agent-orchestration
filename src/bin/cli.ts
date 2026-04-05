@@ -11,11 +11,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { getDatabase } from '../database.js';
-import { CursorProvider, getCursorMetadata } from '../providers/cursor.js';
-import { TaskStatus } from '../models.js';
+import { runCursorCommand, runDocCommand } from './cursorCommands.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,9 +28,14 @@ Usage:
   npx agent-orchestration init           Create AGENTS.md (works with any AI agent)
   npx agent-orchestration init-cursor    Setup for Cursor IDE (.cursor/rules/)
   npx agent-orchestration serve          Run the MCP server
+  npx agent-orchestration doc --task <id> Generate task documentation
   npx agent-orchestration cursor check   Verify Cursor CLI integration
   npx agent-orchestration cursor delegate --task <id> [--mode ask|plan|agent]
+  npx agent-orchestration cursor status --task <id>
   npx agent-orchestration cursor resume --task <id> [--exec]
+  npx agent-orchestration cursor sync --task <id>
+  npx agent-orchestration cursor recover --task <id> [--force]
+  npx agent-orchestration cursor handoff --task <id> --summary "..."
   npx agent-orchestration cursor list    Show delegated Cursor tasks
   npx agent-orchestration help           Show this help message
 
@@ -48,8 +50,11 @@ Commands:
   serve         Runs the MCP server. IDEs call this via their MCP config.
                 The server uses the current working directory as the project root.
 
+  doc           Generates Markdown documentation for a task from orchestration state.
+
   cursor        Provides Cursor-native task delegation helpers.
-                Use "cursor check", "cursor delegate", "cursor resume", or "cursor list".
+                Use "cursor check", "cursor delegate", "cursor status", "cursor resume",
+                "cursor sync", "cursor recover", "cursor handoff", or "cursor list".
 
 Example:
   cd /path/to/my-project
@@ -92,177 +97,8 @@ Note: \`bootstrap\` is an MCP tool invocation in your agent/IDE, not a terminal 
  * Run the MCP server
  */
 async function runServer(): Promise<void> {
-  // Import and start the server
   const { startServer } = await import('../index.js');
   await startServer();
-}
-
-function getFlagValue(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  if (index === -1 || index === args.length - 1) {
-    return undefined;
-  }
-
-  return args[index + 1];
-}
-
-function hasFlag(args: string[], flag: string): boolean {
-  return args.includes(flag);
-}
-
-async function runCursorCheck(): Promise<void> {
-  const result = await new CursorProvider(process.cwd()).check();
-  console.log(`Cursor available: ${result.available ? 'yes' : 'no'}`);
-  console.log(`Binary: ${result.binary}`);
-  console.log(`Runtime: ${result.runtime}`);
-  console.log(`Version: ${result.version ?? 'unknown'}`);
-  console.log(`Features: ${result.features.join(', ') || 'none detected'}`);
-  if (result.warnings.length > 0) {
-    for (const warning of result.warnings) {
-      console.log(`Warning: ${warning}`);
-    }
-  }
-
-  if (!result.available) {
-    process.exit(1);
-  }
-}
-
-async function runCursorDelegate(args: string[]): Promise<void> {
-  const taskId = getFlagValue(args, '--task');
-  if (!taskId) {
-    throw new Error('Missing required flag: --task <taskId>');
-  }
-
-  const db = getDatabase();
-  const task = db.getTask(taskId);
-  if (!task) {
-    throw new Error(`Task ${taskId} not found.`);
-  }
-
-  const provider = new CursorProvider(process.cwd());
-  const check = await provider.check();
-  if (!check.available) {
-    throw new Error(check.warnings.join('\n') || 'Cursor CLI is not available.');
-  }
-
-  const focus = db.getMemory('current_focus', 'context');
-  const delegated = await provider.spawnTask({
-    cwd: process.cwd(),
-    task,
-    currentFocus: focus ? String(focus.value) : null,
-    decisions: db.listMemory('decisions'),
-    research: db.getTaskResearch(task.id),
-    mode: (getFlagValue(args, '--mode') as 'agent' | 'plan' | 'ask' | undefined) ?? undefined,
-    model: getFlagValue(args, '--model'),
-    cloud: hasFlag(args, '--cloud'),
-    useWorktree: hasFlag(args, '--worktree') ? true : hasFlag(args, '--no-worktree') ? false : undefined,
-    force: hasFlag(args, '--force') ? true : hasFlag(args, '--no-force') ? false : undefined,
-  });
-
-  db.updateTask(task.id, {
-    status: TaskStatus.IN_PROGRESS,
-    metadata: delegated.metadata,
-  });
-
-  console.log(`Delegated task '${task.title}' to Cursor.`);
-  console.log(`Command: ${delegated.command}`);
-  console.log(`Chat ID: ${delegated.metadata.providerChatId ?? 'unavailable'}`);
-  console.log(`Run log: ${delegated.metadata.providerLogPath ?? 'unavailable'}`);
-
-  if (delegated.warnings.length > 0) {
-    for (const warning of delegated.warnings) {
-      console.log(`Warning: ${warning}`);
-    }
-  }
-}
-
-async function runCursorResume(args: string[]): Promise<void> {
-  const taskId = getFlagValue(args, '--task');
-  if (!taskId) {
-    throw new Error('Missing required flag: --task <taskId>');
-  }
-
-  const db = getDatabase();
-  const task = db.getTask(taskId);
-  if (!task) {
-    throw new Error(`Task ${taskId} not found.`);
-  }
-
-  const metadata = getCursorMetadata(task.metadata);
-  if (!metadata) {
-    throw new Error(`Task ${taskId} is not delegated to Cursor.`);
-  }
-
-  const provider = new CursorProvider(process.cwd());
-  const result = await provider.resumeSession({
-    cwd: process.cwd(),
-    metadata,
-  });
-
-  console.log(`Resume command: ${result.command}`);
-  if (result.warnings.length > 0) {
-    for (const warning of result.warnings) {
-      console.log(`Warning: ${warning}`);
-    }
-  }
-
-  if (hasFlag(args, '--exec')) {
-    const check = await provider.check();
-    const child = spawn(check.binary, result.args, {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-    });
-
-    child.on('exit', (code) => {
-      process.exit(code ?? 0);
-    });
-  }
-}
-
-function runCursorList(): void {
-  const db = getDatabase();
-  const delegatedTasks = db.listTasks().filter((task) => getCursorMetadata(task.metadata));
-
-  if (delegatedTasks.length === 0) {
-    console.log('No Cursor delegations found.');
-    return;
-  }
-
-  for (const task of delegatedTasks) {
-    const metadata = getCursorMetadata(task.metadata);
-    if (!metadata) {
-      continue;
-    }
-
-    console.log(`${task.title} (${task.id})`);
-    console.log(`  Status: ${metadata.providerStatus}`);
-    console.log(`  Mode: ${metadata.providerMode ?? 'agent'}`);
-    console.log(`  Chat ID: ${metadata.providerChatId ?? 'n/a'}`);
-    console.log(`  Worktree: ${metadata.providerWorktree ? 'yes' : 'no'}`);
-    console.log(`  Log: ${metadata.providerLogPath ?? 'n/a'}`);
-  }
-}
-
-async function runCursorCommand(args: string[]): Promise<void> {
-  const subcommand = args[0];
-
-  switch (subcommand) {
-    case 'check':
-      await runCursorCheck();
-      return;
-    case 'delegate':
-      await runCursorDelegate(args.slice(1));
-      return;
-    case 'resume':
-      await runCursorResume(args.slice(1));
-      return;
-    case 'list':
-      runCursorList();
-      return;
-    default:
-      throw new Error(`Unknown cursor subcommand: ${subcommand ?? '(none)'}`);
-  }
 }
 
 /**
@@ -461,6 +297,14 @@ switch (command) {
       console.error('Server error:', err);
       process.exit(1);
     });
+    break;
+  case 'doc':
+    try {
+      runDocCommand(args.slice(1));
+    } catch (err) {
+      console.error('Doc command error:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     break;
   case 'cursor':
     runCursorCommand(args.slice(1)).catch((err) => {

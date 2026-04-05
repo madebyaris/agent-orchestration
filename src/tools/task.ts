@@ -8,6 +8,7 @@ import { getDatabase } from '../database.js';
 import { TaskComplexity, TaskPriority, TaskStatus, RESEARCH_REQUIREMENTS } from '../models.js';
 import { getCurrentAgentId } from './agent.js';
 import { syncToActiveContext } from '../utils/contextSync.js';
+import { generateTaskDocumentation } from '../utils/autoDocumentation.js';
 
 export function registerTaskTools(server: McpServer): void {
   // task_create
@@ -163,6 +164,7 @@ export function registerTaskTools(server: McpServer): void {
       });
 
       if (updated) {
+        generateTaskDocumentation(db, updated.id);
         // Keep activeContext.md up-to-date (if enabled)
         syncToActiveContext();
 

@@ -41,6 +41,11 @@ export enum TaskComplexity {
   COMPLEX = 'complex',
 }
 
+export type ProviderName = 'cursor';
+export type ProviderRuntime = 'cli' | 'acp';
+export type CursorProviderMode = 'agent' | 'plan' | 'ask' | 'cloud';
+export type ProviderExecutionStatus = 'spawned' | 'running' | 'completed' | 'failed';
+
 export enum EventType {
   AGENT_REGISTERED = 'agent_registered',
   AGENT_UNREGISTERED = 'agent_unregistered',
@@ -118,6 +123,29 @@ export interface Event {
   timestamp: Date;
 }
 
+export interface CursorDelegationMetadata extends Record<string, unknown> {
+  provider: ProviderName;
+  providerRuntime: ProviderRuntime;
+  providerStatus: ProviderExecutionStatus;
+  providerSessionId?: string;
+  providerChatId?: string;
+  providerAgentId?: string;
+  providerModel?: string;
+  providerMode?: CursorProviderMode;
+  providerPrompt?: string;
+  providerWorktree?: boolean;
+  providerWorktreePath?: string;
+  providerTranscriptPath?: string;
+  providerLaunchCommand?: string;
+  providerLaunchedAt?: string;
+  providerSpawnedBy?: string;
+  providerPid?: number;
+  providerLogPath?: string;
+  providerExitCodePath?: string;
+  providerLastSyncAt?: string;
+  providerWarnings?: string[];
+}
+
 // ==================== Factory Functions ====================
 
 export function createAgent(params: {
@@ -160,6 +188,11 @@ export const RESEARCH_REQUIREMENTS: Record<TaskComplexity, string[]> = {
   [TaskComplexity.COMPLEX]: ['context', 'files', 'requirements', 'design'],
 };
 
+export const DEFAULT_CURSOR_WORKTREE_COMPLEXITIES: TaskComplexity[] = [
+  TaskComplexity.MODERATE,
+  TaskComplexity.COMPLEX,
+];
+
 /**
  * Detect task complexity from title/description keywords
  */
@@ -182,6 +215,22 @@ export function detectComplexity(title: string, description?: string): TaskCompl
   
   // Default to simple if no keywords match
   return TaskComplexity.SIMPLE;
+}
+
+export function shouldUseCursorWorktree(
+  complexity: TaskComplexity,
+  preferredComplexities: TaskComplexity[] = DEFAULT_CURSOR_WORKTREE_COMPLEXITIES
+): boolean {
+  return preferredComplexities.includes(complexity);
+}
+
+export function isCursorDelegationMetadata(value: unknown): value is CursorDelegationMetadata {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return candidate.provider === 'cursor' && typeof candidate.providerStatus === 'string';
 }
 
 export function createTask(params: {

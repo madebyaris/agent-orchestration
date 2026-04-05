@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDatabase } from '../database.js';
-import { TaskStatus } from '../models.js';
+import { isCursorDelegationMetadata, TaskStatus } from '../models.js';
 
 /**
  * Check if context sync is enabled via environment variable
@@ -41,6 +41,9 @@ export function syncToActiveContext(): void {
     const activeAgents = agents.filter((a) => ['active', 'busy'].includes(a.status));
     const inProgressTasks = db.listTasks({ status: TaskStatus.IN_PROGRESS });
     const pendingTasks = db.listTasks({ status: TaskStatus.PENDING });
+    const delegatedTasks = db
+      .listTasks()
+      .filter((task) => isCursorDelegationMetadata(task.metadata));
     const decisions = db.listMemory('decisions');
     const context = db.listMemory('context');
 
@@ -98,6 +101,23 @@ export function syncToActiveContext(): void {
       }
       if (pendingTasks.length > 10) {
         lines.push(`- _...and ${pendingTasks.length - 10} more_`);
+      }
+    }
+
+    lines.push('', '## Cursor Delegations', '');
+
+    if (delegatedTasks.length === 0) {
+      lines.push('_No Cursor delegations._');
+    } else {
+      for (const task of delegatedTasks.slice(0, 10)) {
+        const metadata = task.metadata;
+        if (!isCursorDelegationMetadata(metadata)) {
+          continue;
+        }
+
+        const mode = metadata.providerMode ?? 'agent';
+        const chatId = metadata.providerChatId ?? 'n/a';
+        lines.push(`- 🤖 **${task.title}** - ${metadata.providerStatus} via ${mode} (chat: ${chatId})`);
       }
     }
 

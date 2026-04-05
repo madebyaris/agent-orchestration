@@ -17,6 +17,7 @@ import {
   registerUtilityTools,
   registerResearchTools,
   registerProxyTools,
+  registerProviderTools,
 } from './tools/index.js';
 
 // Create server instance
@@ -32,6 +33,7 @@ registerTaskTools(server);
 registerCoordinationTools(server);
 registerUtilityTools(server);
 registerResearchTools(server);
+registerProviderTools(server);
 
 
 

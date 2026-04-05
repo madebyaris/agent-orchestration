@@ -76,6 +76,10 @@ This copies `.cursor/rules/` with Cursor-specific rules.
 npx agent-orchestration init           # Create AGENTS.md (works with any AI agent)
 npx agent-orchestration init-cursor    # Setup for Cursor IDE (.cursor/rules/)
 npx agent-orchestration serve          # Run the MCP server
+npx agent-orchestration cursor check   # Verify Cursor CLI support
+npx agent-orchestration cursor delegate --task <task-id>
+npx agent-orchestration cursor resume --task <task-id>
+npx agent-orchestration cursor list    # Show delegated Cursor tasks
 npx agent-orchestration help           # Show help
 ```
 
@@ -168,6 +172,54 @@ This registers you, shows current focus, pending tasks, and recent decisions.
 | `lock_check` | Check if a resource is locked |
 | `coordination_status` | Get overall system status |
 
+### Cursor Provider
+
+| Tool | Description |
+|------|-------------|
+| `cursor_check` | Verify Cursor CLI availability and supported features |
+| `cursor_delegate_task` | Launch a Cursor CLI run for a task and persist session metadata |
+| `cursor_resume_task` | Return the resume command for a delegated task |
+| `cursor_list_delegations` | Show delegated Cursor tasks and their last known status |
+
+## Cursor-Native Delegation
+
+You can now delegate orchestrator tasks directly to Cursor CLI instead of manually creating a plan, opening a new tab, and pasting context yourself.
+
+### CLI Workflow
+
+```bash
+# Verify Cursor CLI is available
+npx agent-orchestration cursor check
+
+# Delegate a task to Cursor
+npx agent-orchestration cursor delegate --task <task-id> --mode agent
+
+# Resume the delegated session later
+npx agent-orchestration cursor resume --task <task-id>
+
+# Or launch the resume session immediately
+npx agent-orchestration cursor resume --task <task-id> --exec
+```
+
+### MCP Workflow
+
+```text
+cursor_delegate_task:
+  task_id: "<task-id>"
+  mode: "agent"
+  use_worktree: true
+```
+
+Delegations store provider metadata directly on the task, including:
+
+- Cursor chat/session ID
+- provider status
+- worktree usage
+- launch command
+- run log path
+
+Moderate and complex tasks default to Cursor worktrees for safer parallel execution.
+
 ## Research-First Workflow
 
 Tasks are automatically assigned a complexity level that determines research requirements:
@@ -256,6 +308,25 @@ Use these namespaces for organization:
 | `MCP_ORCH_AGENT_NAME` | Default agent name | Auto-generated |
 | `MCP_ORCH_AGENT_ROLE` | Default agent role | `sub` |
 | `MCP_ORCH_CAPABILITIES` | Comma-separated capabilities | `code` |
+
+### `agent-orchestration.config.json`
+
+Optional project-level config for Cursor orchestration:
+
+```json
+{
+  "cursor": {
+    "binary": "agent",
+    "defaultMode": "agent",
+    "defaultForce": true,
+    "autoApproveMcps": true,
+    "trustWorkspace": true,
+    "useCreateChat": true,
+    "logDir": ".agent-orchestration/providers/cursor",
+    "preferWorktreeFor": ["moderate", "complex"]
+  }
+}
+```
 
 ## Architecture
 

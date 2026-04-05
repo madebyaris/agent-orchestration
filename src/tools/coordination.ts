@@ -5,8 +5,9 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDatabase } from '../database.js';
-import { TaskStatus } from '../models.js';
+import { EventType, TaskStatus } from '../models.js';
 import { getCurrentAgentId } from './agent.js';
+import { syncToActiveContext } from '../utils/contextSync.js';
 
 export function registerCoordinationTools(server: McpServer): void {
   // lock_acquire
@@ -53,6 +54,8 @@ export function registerCoordinationTools(server: McpServer): void {
       });
 
       if (lock) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
         return {
           content: [
             {
@@ -87,6 +90,8 @@ export function registerCoordinationTools(server: McpServer): void {
       const released = getDatabase().releaseLock(resource, agentId);
 
       if (released) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
         return {
           content: [{ type: 'text', text: 'Lock released.' }],
         };
@@ -130,6 +135,9 @@ export function registerCoordinationTools(server: McpServer): void {
     async () => {
       const db = getDatabase();
 
+      // Cleanup stale agents so status is accurate
+      db.cleanupStaleAgents();
+
       const agents = db.listAgents();
       const active = agents.filter((a) => ['active', 'busy'].includes(a.status));
       const pending = db.listTasks({ status: TaskStatus.PENDING });
@@ -147,6 +155,56 @@ export function registerCoordinationTools(server: McpServer): void {
       return {
         content: [{ type: 'text', text: lines.join('\n') }],
       };
+    }
+  );
+
+  // event_list
+  server.tool(
+    'event_list',
+    'List recent orchestration events (who did what, when). Useful for debugging coordination.',
+    {
+      agent_id: z.string().optional().describe('Filter by agent ID'),
+      event_type: z
+        .enum([
+          'agent_registered',
+          'agent_unregistered',
+          'agent_heartbeat',
+          'task_created',
+          'task_assigned',
+          'task_claimed',
+          'task_updated',
+          'task_completed',
+          'memory_set',
+          'memory_delete',
+          'lock_acquired',
+          'lock_released',
+        ])
+        .optional()
+        .describe('Filter by event type'),
+      limit: z.number().optional().default(50).describe('Maximum events to return'),
+    },
+    async ({ agent_id, event_type, limit }) => {
+      const db = getDatabase();
+      const events = db.listEvents({
+        agentId: agent_id,
+        eventType: event_type as EventType | undefined,
+        limit,
+      });
+
+      if (events.length === 0) {
+        return { content: [{ type: 'text', text: 'No events found.' }] };
+      }
+
+      const lines: string[] = ['# Recent Events', ''];
+      for (const e of events) {
+        const agent = e.agentId ? ` agent=${e.agentId.slice(0, 8)}...` : '';
+        const resource = e.resourceId ? ` resource=${String(e.resourceId).slice(0, 60)}` : '';
+        const details =
+          e.details && Object.keys(e.details).length > 0 ? ` details=${JSON.stringify(e.details).slice(0, 120)}` : '';
+        lines.push(`- ${e.timestamp.toISOString()} ${e.eventType}${agent}${resource}${details}`);
+      }
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
     }
   );
 }

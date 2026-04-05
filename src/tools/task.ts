@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDatabase } from '../database.js';
 import { TaskComplexity, TaskPriority, TaskStatus, RESEARCH_REQUIREMENTS } from '../models.js';
 import { getCurrentAgentId } from './agent.js';
+import { syncToActiveContext } from '../utils/contextSync.js';
 
 export function registerTaskTools(server: McpServer): void {
   // task_create
@@ -44,6 +45,9 @@ export function registerTaskTools(server: McpServer): void {
         assignedTo: assigned_to ?? null,
         dependencies,
       });
+
+      // Keep activeContext.md up-to-date (if enabled)
+      syncToActiveContext();
 
       const requirements = RESEARCH_REQUIREMENTS[task.complexity];
       const researchInfo = requirements.length > 0
@@ -159,6 +163,9 @@ export function registerTaskTools(server: McpServer): void {
       });
 
       if (updated) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
+
         const skippedWarning = skip_research && requirements.length > 0 && !task.researchReady
           ? '\n\n⚠️ _Research was skipped. Consider documenting findings as you work._'
           : '';
@@ -211,6 +218,9 @@ export function registerTaskTools(server: McpServer): void {
       });
 
       if (updated) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
+
         const statusInfo = status ? ` → ${status}` : '';
         const progressInfo = progress !== undefined ? ` (${progress}%)` : '';
 
@@ -254,6 +264,9 @@ export function registerTaskTools(server: McpServer): void {
       });
 
       if (updated) {
+        // Keep activeContext.md up-to-date (if enabled)
+        syncToActiveContext();
+
         return {
           content: [
             {
@@ -377,12 +390,35 @@ export function registerTaskTools(server: McpServer): void {
           };
         }
 
+        const requirements = RESEARCH_REQUIREMENTS[task.complexity];
+        if (requirements.length > 0 && !task.researchReady) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Yes - task is assigned to you, but research is not complete. Use research_status task_id="${task.id}" then research_ready, then task_claim.`,
+              },
+            ],
+          };
+        }
+
         return {
           content: [{ type: 'text', text: 'Yes - task is ready for you. Use task_claim to start.' }],
         };
       } else {
         const available = db.getNextAvailableTask(agentId);
         if (available) {
+          const requirements = RESEARCH_REQUIREMENTS[available.complexity];
+          if (requirements.length > 0 && !available.researchReady) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Yes - '${available.title}' is available, but research is required before you can claim it. Use research_status task_id="${available.id}" then research_ready, then task_claim.`,
+                },
+              ],
+            };
+          }
           return {
             content: [{ type: 'text', text: `Yes - '${available.title}' is available.` }],
           };

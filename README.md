@@ -107,6 +107,8 @@ Use the `bootstrap` tool to start:
 bootstrap
 ```
 
+**Note**: `bootstrap` is an MCP tool invocation inside your agent/IDE, not a terminal command.
+
 This registers you, shows current focus, pending tasks, and recent decisions.
 
 ## Available Tools

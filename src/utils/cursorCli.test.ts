@@ -76,9 +76,12 @@ test('builds a prompt that includes orchestration workflow instructions', () => 
     research: {
       design: [{ key: 'provider', value: 'Use a CursorProvider abstraction.' }],
     },
+    delegatedAgentName: 'cursor-sub-task_123-test',
   });
 
-  assert.match(prompt, /Run the MCP tool `bootstrap` first\./);
+  assert.match(prompt, /You are a delegated sub-agent, not the main agent\./);
+  assert.match(prompt, /claim_todo/);
+  assert.match(prompt, /cursor-sub-task_123-test/);
   assert.match(prompt, /Use `lock_check` and `lock_acquire` before editing shared files\./);
   assert.match(prompt, /Current focus:/);
   assert.match(prompt, /Recent decisions:/);

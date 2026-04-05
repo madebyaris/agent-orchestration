@@ -131,6 +131,7 @@ export interface CursorDelegationMetadata extends Record<string, unknown> {
   providerSessionId?: string;
   providerChatId?: string;
   providerAgentId?: string;
+  providerAgentName?: string;
   providerModel?: string;
   providerMode?: CursorProviderMode;
   providerPrompt?: string;

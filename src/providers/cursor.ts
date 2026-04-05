@@ -57,11 +57,13 @@ export class CursorProvider implements AgentProvider {
     const useWorktree = shouldUseCursorWorktreeForTask(input.task, config, input.useWorktree);
     const force = input.force ?? config.defaultForce;
     const warnings: string[] = [];
+    const delegatedAgentName = `cursor-sub-${input.task.id.slice(0, 8)}-${Date.now()}`;
     const prompt = buildCursorPrompt({
       task: input.task,
       currentFocus: input.currentFocus,
       decisions: input.decisions,
       research: input.research,
+      delegatedAgentName,
     });
 
     let chatId: string | undefined;
@@ -91,6 +93,11 @@ export class CursorProvider implements AgentProvider {
       cwd: input.cwd,
       logPath,
       exitCodePath,
+      env: {
+        MCP_ORCH_AGENT_NAME: delegatedAgentName,
+        MCP_ORCH_AGENT_ROLE: 'sub',
+        MCP_ORCH_CAPABILITIES: 'code',
+      },
     });
 
     const metadata: CursorDelegationMetadata = {
@@ -99,6 +106,7 @@ export class CursorProvider implements AgentProvider {
       providerStatus: 'running',
       providerSessionId: chatId,
       providerChatId: chatId,
+      providerAgentName: delegatedAgentName,
       providerModel: input.model ?? config.defaultModel,
       providerMode: normalized.cloud ? 'cloud' : normalized.mode,
       providerPrompt: prompt,

@@ -79,6 +79,7 @@ export function buildCursorPrompt(input: {
   currentFocus: string | null;
   decisions: Array<{ key: string; value: unknown }>;
   research: Record<string, Array<{ key: string; value: unknown }>>;
+  delegatedAgentName?: string;
 }): string {
   const lines: string[] = [
     `You are working on this orchestrated task: ${input.task.title}`,
@@ -123,8 +124,12 @@ export function buildCursorPrompt(input: {
   lines.push(
     '',
     'Workflow requirements:',
-    '- Run the MCP tool `bootstrap` first.',
-    '- If this task is not already claimed, use `claim_todo` or `task_claim` as appropriate.',
+    '- You are a delegated sub-agent, not the main agent.',
+    `- Start by running \`claim_todo\` with the exact task title "${input.task.title}".`,
+    '- If you need to bootstrap manually, register as a sub-agent, never as the main agent.',
+    input.delegatedAgentName
+      ? `- Your expected sub-agent name is \`${input.delegatedAgentName}\`.`
+      : '- Use a unique sub-agent identity for this delegated run.',
     '- Use `lock_check` and `lock_acquire` before editing shared files.',
     '- Record important findings in shared memory when helpful.',
     '- Use `task_complete` when done and `agent_unregister` before finishing your session.',
